@@ -12,6 +12,8 @@ query=$(curl -s "https://api.dictionaryapi.dev/api/v2/entries/en_US/$word")
 # Extract the first 3 definitions from the response
 def=$(echo "$query" | jq -r '[.[].meanings[].definitions[] | {pos: .partOfSpeech, def: .definition}] | .[:3] | .[] | "\n\(.pos). \(.def)"')
 
-# Display the definitions in a notification
-notify-send -t 60000 "$word -" "$def"
+# Append the word and definitions to the file
+echo -e "## $word\n$def\n" >> /put/your/path/to/the/file/here/English_Dictionary.md
 
+# Display the definitions in a notification (optional, remove if not needed)
+notify-send -t 60000 "$word -" "$def"
