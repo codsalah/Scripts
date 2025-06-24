@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant & Choices Scraper Flow Diagram</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.2em;
+            margin: 0;
+        }
+        
+        .diagram-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            min-height: 600px;
+        }
+        
+        .legend {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .legend-item {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid;
+        }
+        
+        .legend-item.restaurant {
+            border-color: #e1f5fe;
+        }
+        
+        .legend-item.choices {
+            border-color: #fff3e0;
+        }
+        
+        .legend-item.concurrent {
+            border-color: #f3e5f5;
+        }
+        
+        .legend-item.retry {
+            border-color: #ffebee;
+        }
+        
+        .legend-item h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+        
+        .legend-item p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .legend {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Restaurant & Choices Scraper</h1>
+            <p>High-Performance Parallel Data Collection Pipeline</p>
+        </div>
+        
+        <div class="diagram-container">
+            <div class="mermaid"> 
+                // Make sure you put your mermaid in here 
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item restaurant">
+                <h3>🍽️ Restaurant Module</h3>
+                <p>Handles restaurant data scraping with ThreadPoolExecutor (4 threads), page pagination, and exponential backoff retry mechanism.</p>
+            </div>
+            <div class="legend-item choices">
+                <h3>🎯 Choices Module</h3>
+                <p>High-concurrency async approach using aiohttp for fetching menu item choices. Processes 800 items per partition with 200 concurrent requests.</p>
+            </div>
+            <div class="legend-item concurrent">
+                <h3>⚡ Concurrent Operations</h3>
+                <p>Parallel execution components including thread pools, async tasks, and simultaneous API requests for maximum throughput.</p>
+            </div>
+            <div class="legend-item retry">
+                <h3>🔄 Retry Mechanisms</h3>
+                <p>Multi-level retry strategies with inner (7 attempts per item) and outer (partition-level) retries, plus curl fallback for persistent failures.</p>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="window.print()">🖨️ Print Diagram</button>
+            <button class="btn" onclick="exportDiagram()">💾 Export SVG</button>
+            <button class="btn" onclick="zoomDiagram()">🔍 Toggle Zoom</button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#667eea',
+                primaryTextColor: '#2c3e50',
+                primaryBorderColor: '#667eea',
+                lineColor: '#34495e',
+                secondaryColor: '#ecf0f1',
+                tertiaryColor: '#f8f9fa'
+            },
+            flowchart: {
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 10
+            }
+        });
+
+        // Utility functions
+        function exportDiagram() {
+            const svg = document.querySelector('.mermaid svg');
+            if (svg) {
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const blob = new Blob([svgData], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'restaurant-scraper-diagram.svg';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        let isZoomed = false;
+        function zoomDiagram() {
+            const container = document.querySelector('.diagram-container');
+            if (isZoomed) {
+                container.style.transform = 'scale(1)';
+                container.style.transformOrigin = 'center';
+                isZoomed = false;
+            } else {
+                container.style.transform = 'scale(1.2)';
+                container.style.transformOrigin = 'center top';
+                isZoomed = true;
+            }
+        }
+
+        // Add smooth scrolling and animations
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate elements on load
+            const container = document.querySelector('.container');
+            container.style.opacity = '0';
+            container.style.transform = 'translateY(20px)';
+            
+            setTimeout(() => {
+                container.style.transition = 'all 0.6s ease';
+                container.style.opacity = '1';
+                container.style.transform = 'translateY(0)';
+            }, 100);
+        });
+    </script>
+</body>
+</html>
