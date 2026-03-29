@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Reading Progress Slider (Robust)
+// @name         Reading Progress Bar - Minimal Rainbow Fixed
 // @namespace    https://github.com/codsalah/scripts
-// @version      1.0
-// @description  Robust toggleable reading progress slider with performance optimizations
+// @version      5.3
+// @description  Bar starts gray and fills with a rainbow gradient as you scroll
 // @match        *://*/*
 // @grant        none
 // @run-at       document-start
@@ -11,316 +11,184 @@
 (function () {
     'use strict';
 
-    // Singleton pattern - prevent multiple instances
-    if (window.__readingProgressActive) return;
-    window.__readingProgressActive = true;
+    if (window.__progressBarLoaded) return;
+    window.__progressBarLoaded = true;
 
     const CONFIG = {
-        READING_SPEED_WPM: 100,
-        THROTTLE_MS: 100,
-        Z_INDEX: 2147483647, // Max safe z-index
-        RETRY_DELAY: 100,
-        MAX_RETRIES: 50
+        READING_SPEED_WPM: 200,
+        Z_INDEX: 2147483647,
+        BAR_HEIGHT: 3
     };
 
-    class ReadingProgressBar {
-        constructor() {
-            this.barVisible = false;
-            this.container = null;
-            this.slider = null;
-            this.label = null;
-            this.throttleTimer = null;
-            this.resizeObserver = null;
-            this.mutationObserver = null;
-            this.initialized = false;
-            this.totalWords = 0;
-            this.totalReadingTime = 0;
+    let barElement = null;
+    let progressLine = null;
+    let statsElement = null;
+    let totalReadingTime = 0;
+    let ticking = false;
+
+    const baseStyles = `
+        #progress-bar-host {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: ${CONFIG.BAR_HEIGHT}px !important;
+            z-index: ${CONFIG.Z_INDEX} !important;
+            background: #d0d0d0 !important; /* The gray background */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
         }
 
-        init() {
-            if (this.initialized) return;
-
-            try {
-                this.waitForBody(() => {
-                    this.setupEventListeners();
-                    this.initialized = true;
-                });
-            } catch (error) {
-                console.error('[Reading Progress] Initialization failed:', error);
-            }
+        #progress-line {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            height: 100% !important;
+            width: 0%; /* Controlled by JS */
+            /* Rainbow Gradient Definition */
+            background: linear-gradient(to right,
+                #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff
+            ) !important;
+            background-attachment: fixed !important; /* Keeps rainbow colors pinned to the screen width */
+            background-size: 100vw 100% !important;
+            box-shadow: 0 0 2px rgba(0,0,0,0.2) !important;
         }
 
-        waitForBody(callback, retries = 0) {
-            if (document.body) {
-                callback();
-            } else if (retries < CONFIG.MAX_RETRIES) {
-                setTimeout(() => this.waitForBody(callback, retries + 1), CONFIG.RETRY_DELAY);
-            } else {
-                console.error('[Reading Progress] Failed to find document.body');
-            }
+        #progress-stats {
+            position: fixed !important;
+            top: 8px !important;
+            right: 20px !important;
+            z-index: ${CONFIG.Z_INDEX + 1} !important;
+            font-family: system-ui, -apple-system, sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            color: #333 !important;
+            text-shadow: 0 0 8px rgba(255,255,255,0.9) !important;
+            user-select: none !important;
+            pointer-events: none !important;
+            letter-spacing: 0.3px !important;
+            white-space: nowrap !important;
         }
 
-        createBar() {
-            if (this.container) return; // Already created
+        .stats-percent { display: inline-block !important; min-width: 35px !important; font-weight: 700 !important; }
+        .stats-time { display: inline-block !important; margin-left: 12px !important; opacity: 0.85 !important; }
+    `;
 
-            try {
-                // Container
-                this.container = document.createElement('div');
-                this.container.setAttribute('data-reading-progress', 'true');
-                this.container.style.cssText = `
-                    position: fixed !important;
-                    top: 0 !important;
-                    left: 0 !important;
-                    width: 100% !important;
-                    height: 28px !important;
-                    background: rgba(0, 0, 0, 0.85) !important;
-                    z-index: ${CONFIG.Z_INDEX} !important;
-                    display: none !important;
-                    pointer-events: none !important;
-                    box-sizing: border-box !important;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif !important;
-                    user-select: none !important;
-                    -webkit-user-select: none !important;
-                `;
+    const styleEl = document.createElement('style');
+    styleEl.textContent = baseStyles;
+    document.documentElement.appendChild(styleEl);
 
-                // Slider
-                this.slider = document.createElement('input');
-                this.slider.type = 'range';
-                this.slider.min = '0';
-                this.slider.max = '100';
-                this.slider.value = '0';
-                this.slider.disabled = true;
-                this.slider.style.cssText = `
-                    width: 90% !important;
-                    margin: 6px 5% !important;
-                    height: 4px !important;
-                    pointer-events: none !important;
-                    appearance: none !important;
-                    -webkit-appearance: none !important;
-                    background: rgba(255, 255, 255, 0.2) !important;
-                    outline: none !important;
-                    border: none !important;
-                `;
-
-                // Custom slider styling
-                const style = document.createElement('style');
-                style.textContent = `
-                    [data-reading-progress] input[type="range"]::-webkit-slider-thumb {
-                        appearance: none !important;
-                        width: 12px !important;
-                        height: 12px !important;
-                        background: #4CAF50 !important;
-                        cursor: default !important;
-                        border-radius: 50% !important;
-                    }
-                    [data-reading-progress] input[type="range"]::-moz-range-thumb {
-                        width: 12px !important;
-                        height: 12px !important;
-                        background: #4CAF50 !important;
-                        cursor: default !important;
-                        border-radius: 50% !important;
-                        border: none !important;
-                    }
-                `;
-                document.head.appendChild(style);
-
-                // Label
-                this.label = document.createElement('div');
-                this.label.style.cssText = `
-                    position: absolute !important;
-                    right: 10px !important;
-                    top: 50% !important;
-                    transform: translateY(-50%) !important;
-                    color: #fff !important;
-                    font-size: 11px !important;
-                    font-weight: 500 !important;
-                    line-height: 1.4 !important;
-                    text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
-                    text-align: right !important;
-                `;
-                this.label.innerHTML = '<div>0%</div><div>0 min left</div>';
-
-                this.container.appendChild(this.slider);
-                this.container.appendChild(this.label);
-                document.body.appendChild(this.container);
-
-                // Setup observers for dynamic content
-                this.setupObservers();
-
-                // Calculate reading time
-                this.calculateReadingTime();
-
-            } catch (error) {
-                console.error('[Reading Progress] Failed to create bar:', error);
-            }
+    function getScrollPercent() {
+        const winScrollable = document.documentElement.scrollHeight - window.innerHeight;
+        if (winScrollable > 100) {
+            return Math.max(0, Math.min(1, window.scrollY / winScrollable));
         }
 
-        calculateReadingTime() {
-            try {
-                // Get all text content from the page
-                const bodyText = document.body.innerText || document.body.textContent || '';
-
-                // Count words (split by whitespace and filter empty strings)
-                this.totalWords = bodyText.trim().split(/\s+/).filter(word => word.length > 0).length;
-
-                // Calculate reading time in minutes (100 WPM)
-                this.totalReadingTime = Math.ceil(this.totalWords / CONFIG.READING_SPEED_WPM);
-
-            } catch (error) {
-                console.warn('[Reading Progress] Failed to calculate reading time:', error);
-                this.totalWords = 0;
-                this.totalReadingTime = 0;
-            }
-        }
-
-        setupObservers() {
-            try {
-                // Watch for window resize
-                this.resizeObserver = new ResizeObserver(() => {
-                    this.throttledUpdate();
-                });
-                this.resizeObserver.observe(document.documentElement);
-
-                // Watch for DOM changes that might affect scroll height
-                this.mutationObserver = new MutationObserver(() => {
-                    this.calculateReadingTime(); // Recalculate when content changes
-                    this.throttledUpdate();
-                });
-
-                this.mutationObserver.observe(document.body, {
-                    childList: true,
-                    subtree: true,
-                    attributes: false
-                });
-            } catch (error) {
-                console.warn('[Reading Progress] Observers setup failed:', error);
-            }
-        }
-
-        throttledUpdate() {
-            if (this.throttleTimer) return;
-
-            this.throttleTimer = setTimeout(() => {
-                this.updateProgress();
-                this.throttleTimer = null;
-            }, CONFIG.THROTTLE_MS);
-        }
-
-        updateProgress() {
-            if (!this.barVisible || !this.slider || !this.label) return;
-
-            try {
-                const scrollTop = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
-                const scrollHeight = Math.max(
-                    document.body.scrollHeight,
-                    document.body.offsetHeight,
-                    document.documentElement.clientHeight,
-                    document.documentElement.scrollHeight,
-                    document.documentElement.offsetHeight
-                );
-                const clientHeight = window.innerHeight || document.documentElement.clientHeight;
-                const docHeight = scrollHeight - clientHeight;
-
-                let percent = 0;
-                if (docHeight > 0) {
-                    percent = Math.min(100, Math.max(0, Math.round((scrollTop / docHeight) * 100)));
-                } else if (scrollTop > 0) {
-                    percent = 100;
+        const all = document.querySelectorAll('*');
+        let best = { pct: 0, scrollable: 0 };
+        for (const el of all) {
+            const scrollable = el.scrollHeight - el.clientHeight;
+            if (scrollable > 100) {
+                const pct = el.scrollTop / scrollable;
+                if (scrollable > best.scrollable) {
+                    best = { pct, scrollable };
                 }
-
-                this.slider.value = String(percent);
-
-                // Calculate remaining reading time
-                const remainingPercent = 100 - percent;
-                const remainingMinutes = Math.ceil((this.totalReadingTime * remainingPercent) / 100);
-
-                // Format time display
-                let timeText;
-                if (remainingMinutes === 0) {
-                    timeText = 'Done!';
-                } else if (remainingMinutes === 1) {
-                    timeText = '1 min left';
-                } else {
-                    timeText = `${remainingMinutes} min left`;
-                }
-
-                this.label.innerHTML = `<div>${percent}%</div><div>${timeText}</div>`;
-            } catch (error) {
-                console.error('[Reading Progress] Update failed:', error);
             }
         }
+        return Math.max(0, Math.min(1, best.pct));
+    }
 
-        toggleBar() {
-            try {
-                if (!this.container) {
-                    this.createBar();
-                }
+    function calculateReadingTime() {
+        const text = document.body ? document.body.innerText : '';
+        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+        totalReadingTime = Math.max(1, Math.ceil(wordCount / CONFIG.READING_SPEED_WPM));
+    }
 
-                if (!this.container) {
-                    console.error('[Reading Progress] Failed to create container');
-                    return;
-                }
+    function formatTime(minutes) {
+        if (minutes <= 0) return '✓';
+        if (minutes < 60) return `${minutes}m`;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
+    }
 
-                this.barVisible = !this.barVisible;
-                this.container.style.display = this.barVisible ? 'block' : 'none';
+    function updateDisplay() {
+        if (!progressLine || !statsElement) return;
 
-                if (this.barVisible) {
-                    this.updateProgress();
-                }
-            } catch (error) {
-                console.error('[Reading Progress] Toggle failed:', error);
-            }
+        const fraction = getScrollPercent();
+        const percent = fraction * 100;
+
+        // Update the width of the rainbow line
+        progressLine.style.width = percent + '%';
+
+        const elapsedTime = Math.round(totalReadingTime * fraction);
+        const remainingTime = Math.max(0, totalReadingTime - elapsedTime);
+
+        const percentEl = statsElement.querySelector('.stats-percent');
+        const timeEl = statsElement.querySelector('.stats-time');
+
+        if (percentEl) percentEl.textContent = Math.round(percent) + '%';
+        if (timeEl) {
+            timeEl.innerHTML = `
+                <span class="time-elapsed">${formatTime(elapsedTime)}</span>
+                <span style="opacity:0.6; margin:0 4px;">/</span>
+                <span class="time-remaining">${formatTime(remainingTime)}</span>
+            `;
         }
+    }
 
-        setupEventListeners() {
-            // Scroll listener with throttling
-            const scrollHandler = () => this.throttledUpdate();
-            window.addEventListener('scroll', scrollHandler, { passive: true });
+    function createBar() {
+        if (document.getElementById('progress-bar-host')) return;
 
-            // Keyboard shortcut
-            const keyHandler = (e) => {
-                if (e.altKey && e.key.toLowerCase() === 'r') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.toggleBar();
-                }
-            };
-            document.addEventListener('keydown', keyHandler, true);
+        barElement = document.createElement('div');
+        barElement.id = 'progress-bar-host';
 
-            // Cleanup on unload
-            window.addEventListener('beforeunload', () => {
-                this.cleanup();
+        progressLine = document.createElement('div');
+        progressLine.id = 'progress-line';
+        barElement.appendChild(progressLine);
+
+        document.documentElement.insertBefore(barElement, document.documentElement.firstChild);
+
+        statsElement = document.createElement('div');
+        statsElement.id = 'progress-stats';
+        statsElement.innerHTML = `<span class="stats-percent">0%</span><span class="stats-time"></span>`;
+        document.documentElement.appendChild(statsElement);
+    }
+
+    function onScroll() {
+        if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(() => {
+                updateDisplay();
+                ticking = false;
             });
         }
-
-        cleanup() {
-            try {
-                if (this.resizeObserver) {
-                    this.resizeObserver.disconnect();
-                }
-                if (this.mutationObserver) {
-                    this.mutationObserver.disconnect();
-                }
-                if (this.container && this.container.parentNode) {
-                    this.container.parentNode.removeChild(this.container);
-                }
-                window.__readingProgressActive = false;
-            } catch (error) {
-                console.error('[Reading Progress] Cleanup failed:', error);
-            }
-        }
     }
 
-    // Initialize
-    const progressBar = new ReadingProgressBar();
+    function setupEvents() {
+        window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+        document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+
+        const observer = new MutationObserver(() => {
+            calculateReadingTime();
+            updateDisplay();
+        });
+        if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+        window.addEventListener('resize', () => { updateDisplay(); }, { passive: true });
+    }
+
+    function start() {
+        createBar();
+        calculateReadingTime();
+        setupEvents();
+        updateDisplay();
+    }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => progressBar.init());
+        document.addEventListener('DOMContentLoaded', start);
     } else {
-        progressBar.init();
+        start();
     }
-
-    // Expose for debugging (optional)
-    window.__readingProgress = progressBar;
-
 })();
